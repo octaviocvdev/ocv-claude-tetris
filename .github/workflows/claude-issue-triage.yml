@@ -1,0 +1,47 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Issue Triage
+        id: claude-triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_tools: 'Bash(gh issue edit:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh label list:*)'
+          prompt: |
+            Estás revisando el issue #${{ github.event.issue.number }} del repositorio ${{ github.repository }}.
+
+            Tu tarea tiene dos partes:
+
+            1. ETIQUETADO
+               - Revisa las labels existentes en el repositorio con `gh label list`.
+               - Según el título y la descripción del issue, aplica las labels que correspondan
+                 (por ejemplo: bug, enhancement, documentation, question, good first issue, help wanted, duplicate, invalid, wontfix).
+               - Si el issue ya tiene labels que ya no aplican, quítalas. Si ninguna label existente encaja bien, no inventes una nueva; deja el issue sin esa clasificación.
+               - Aplica los cambios con `gh issue edit ${{ github.event.issue.number }} --add-label "..." --remove-label "..."`.
+
+            2. DIAGNÓSTICO
+               - Explora el código del repositorio (no solo el texto del issue) para entender el contexto real del problema o la solicitud.
+               - Publica UN solo comentario en el issue (con `gh issue comment ${{ github.event.issue.number }} --body "..."`) que incluya:
+                 - Un resumen breve del problema o la solicitud.
+                 - Un diagnóstico técnico: posibles causas (si es un bug) o el enfoque de implementación (si es una mejora/feature), señalando los archivos o áreas del código involucradas.
+                 - Una lista de pasos sugeridos para implementar la solución, que sirva como punto de partida para el desarrollo posterior.
+               - No implementes la solución ni modifiques código en este flujo: solo diagnostica y deja el comentario.
+               - Si el issue fue editado y ya existe un comentario de diagnóstico previo de Claude, actualiza tu análisis en un nuevo comentario en lugar de repetir uno idéntico.
+
+            Sé conciso y técnico. Responde en español, ya que así está escrito el issue.

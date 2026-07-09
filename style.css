@@ -196,12 +196,20 @@ kbd {
   display: none;
 }
 
+.hidden {
+  display: none;
+}
+
 .overlay-box {
   text-align: center;
   display: flex;
   flex-direction: column;
   gap: 12px;
   align-items: center;
+}
+
+.overlay-box.hidden {
+  display: none;
 }
 
 #overlay-title {
@@ -217,7 +225,8 @@ kbd {
   color: #7aa2f7;
 }
 
-#restart-btn {
+#restart-btn,
+.menu-btn {
   margin-top: 8px;
   background: #7aa2f7;
   color: #0f0f17;
@@ -231,6 +240,70 @@ kbd {
   transition: background 0.15s;
 }
 
-#restart-btn:hover {
+#restart-btn:hover,
+.menu-btn:hover {
   background: #9bbdff;
+}
+
+/* ---- Pause menu ---- */
+#pause-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  min-width: 220px;
+}
+
+#pause-menu.hidden {
+  display: none;
+}
+
+.pause-menu-title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  color: #7aa2f7;
+}
+
+.pause-menu-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.pause-menu-buttons .menu-btn {
+  margin-top: 0;
+}
+
+#pause-controls-list.controls li {
+  justify-content: center;
+}
+
+.pause-level-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.pause-level-control label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--label);
+  font-weight: 600;
+  transition: color 0.25s;
+}
+
+#start-level {
+  background: var(--kbd-bg);
+  border: 1px solid var(--kbd-border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.25s, color 0.25s, border-color 0.25s;
 }

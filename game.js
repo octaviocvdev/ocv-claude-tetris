@@ -41,8 +41,24 @@ const overlay = document.getElementById('overlay');
 const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
+const recordForm = document.getElementById('record-form');
+const nameInput = document.getElementById('name-input');
+const saveScoreBtn = document.getElementById('save-score-btn');
+const overlayLeaderboard = document.getElementById('overlay-leaderboard');
+const overlayLeaderboardList = document.getElementById('overlay-leaderboard-list');
+const overlayBestCombo = document.getElementById('overlay-best-combo');
+const overlayMaxLines = document.getElementById('overlay-max-lines');
+const overlayResetScoresBtn = document.getElementById('overlay-reset-scores-btn');
+const sidebarLeaderboardList = document.getElementById('leaderboard-list');
+const sidebarBestCombo = document.getElementById('best-combo');
+const sidebarMaxLines = document.getElementById('max-lines');
+const resetScoresBtn = document.getElementById('reset-scores-btn');
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+const SCORES_KEY = 'tetris-scores';
+const STATS_KEY = 'tetris-stats';
+const MAX_SCORES = 5;
+
+let board, current, next, score, lines, level, combo, maxCombo, prevLockCleared, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -112,6 +128,7 @@ function clearLines() {
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
     updateHUD();
   }
+  return cleared;
 }
 
 function ghostY() {
@@ -139,7 +156,15 @@ function softDrop() {
 
 function lockPiece() {
   merge();
-  clearLines();
+  const cleared = clearLines();
+  if (cleared > 0) {
+    if (prevLockCleared) combo++;
+    prevLockCleared = true;
+    if (combo > maxCombo) maxCombo = combo;
+  } else {
+    combo = 0;
+    prevLockCleared = false;
+  }
   spawn();
 }
 
@@ -156,6 +181,127 @@ function updateHUD() {
   scoreEl.textContent = score.toLocaleString();
   linesEl.textContent = lines;
   levelEl.textContent = level;
+}
+
+/* ---- Leaderboard / localStorage persistence ---- */
+
+function loadScores() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SCORES_KEY));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveScores(scores) {
+  try {
+    localStorage.setItem(SCORES_KEY, JSON.stringify(scores));
+  } catch {
+    /* localStorage unavailable (e.g. private browsing) — ignore */
+  }
+}
+
+function loadStats() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STATS_KEY));
+    return {
+      bestCombo: parsed && typeof parsed.bestCombo === 'number' ? parsed.bestCombo : 0,
+      maxLines: parsed && typeof parsed.maxLines === 'number' ? parsed.maxLines : 0,
+    };
+  } catch {
+    return { bestCombo: 0, maxLines: 0 };
+  }
+}
+
+function saveStats(stats) {
+  try {
+    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+  } catch {
+    /* localStorage unavailable (e.g. private browsing) — ignore */
+  }
+}
+
+function qualifiesForLeaderboard(candidateScore, scores = loadScores()) {
+  if (scores.length < MAX_SCORES) return true;
+  return candidateScore > scores[scores.length - 1].score;
+}
+
+function addScoreEntry(name, finalScore, finalLines, finalCombo) {
+  const scores = loadScores();
+  scores.push({
+    name: name || 'Jugador',
+    score: finalScore,
+    lines: finalLines,
+    combo: finalCombo,
+    date: new Date().toISOString(),
+  });
+  scores.sort((a, b) => b.score - a.score);
+  scores.splice(MAX_SCORES);
+  saveScores(scores);
+  return scores;
+}
+
+function updateAllTimeStats(finalMaxCombo, finalLines) {
+  const stats = loadStats();
+  stats.bestCombo = Math.max(stats.bestCombo, finalMaxCombo);
+  stats.maxLines = Math.max(stats.maxLines, finalLines);
+  saveStats(stats);
+  return stats;
+}
+
+function buildLeaderboardRows(listEl, scores) {
+  listEl.innerHTML = '';
+  if (scores.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'leaderboard-empty';
+    li.textContent = 'Sin récords aún';
+    listEl.appendChild(li);
+    return;
+  }
+  scores.forEach((entry, i) => {
+    const li = document.createElement('li');
+    li.className = 'leaderboard-row';
+    const rank = document.createElement('span');
+    rank.className = 'lb-rank';
+    rank.textContent = `${i + 1}.`;
+    const name = document.createElement('span');
+    name.className = 'lb-name';
+    name.textContent = entry.name;
+    const value = document.createElement('span');
+    value.className = 'lb-score';
+    value.textContent = entry.score.toLocaleString();
+    li.append(rank, name, value);
+    listEl.appendChild(li);
+  });
+}
+
+function renderLeaderboardPanel(scores = loadScores(), stats = loadStats()) {
+  buildLeaderboardRows(sidebarLeaderboardList, scores);
+  sidebarBestCombo.textContent = stats.bestCombo;
+  sidebarMaxLines.textContent = stats.maxLines;
+}
+
+function renderOverlayLeaderboard(scores = loadScores(), stats = loadStats()) {
+  buildLeaderboardRows(overlayLeaderboardList, scores);
+  overlayBestCombo.textContent = stats.bestCombo;
+  overlayMaxLines.textContent = stats.maxLines;
+}
+
+function resetScores() {
+  if (!confirm('¿Borrar todos los récords guardados?')) return;
+  localStorage.removeItem(SCORES_KEY);
+  localStorage.removeItem(STATS_KEY);
+  renderLeaderboardPanel();
+  if (!overlayLeaderboard.classList.contains('hidden')) {
+    renderOverlayLeaderboard();
+  }
+  // A cleared leaderboard means the current game-over score may now
+  // qualify even if it didn't before the reset.
+  if (gameOver && qualifiesForLeaderboard(score)) {
+    recordForm.classList.remove('hidden');
+    recordForm.classList.add('new-record');
+  }
 }
 
 function drawBlock(context, x, y, colorIndex, size, alpha) {
@@ -226,6 +372,23 @@ function endGame() {
   overlayTitle.textContent = 'GAME OVER';
   overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
   overlay.classList.remove('hidden');
+
+  const stats = updateAllTimeStats(maxCombo, lines);
+  const scores = loadScores();
+  renderLeaderboardPanel(scores, stats);
+
+  overlayLeaderboard.classList.remove('hidden');
+  renderOverlayLeaderboard(scores);
+
+  if (qualifiesForLeaderboard(score, scores)) {
+    recordForm.classList.remove('hidden');
+    recordForm.classList.add('new-record');
+    nameInput.value = '';
+    nameInput.focus();
+  } else {
+    recordForm.classList.add('hidden');
+    recordForm.classList.remove('new-record');
+  }
 }
 
 function togglePause() {
@@ -238,6 +401,9 @@ function togglePause() {
     cancelAnimationFrame(animId);
     overlayTitle.textContent = 'PAUSA';
     overlayScore.textContent = '';
+    overlayLeaderboard.classList.add('hidden');
+    recordForm.classList.add('hidden');
+    recordForm.classList.remove('new-record');
     overlay.classList.remove('hidden');
   }
 }
@@ -264,6 +430,9 @@ function init() {
   score = 0;
   lines = 0;
   level = 1;
+  combo = 0;
+  maxCombo = 0;
+  prevLockCleared = false;
   paused = false;
   gameOver = false;
   dropInterval = 1000;
@@ -273,6 +442,9 @@ function init() {
   spawn();
   updateHUD();
   overlay.classList.add('hidden');
+  recordForm.classList.add('hidden');
+  recordForm.classList.remove('new-record');
+  overlayLeaderboard.classList.add('hidden');
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
@@ -304,6 +476,22 @@ document.addEventListener('keydown', e => {
 
 restartBtn.addEventListener('click', init);
 
+saveScoreBtn.addEventListener('click', () => {
+  const name = nameInput.value.trim() || 'Jugador';
+  const scores = addScoreEntry(name, score, lines, maxCombo);
+  recordForm.classList.add('hidden');
+  recordForm.classList.remove('new-record');
+  renderLeaderboardPanel(scores, loadStats());
+  renderOverlayLeaderboard(scores);
+});
+
+nameInput.addEventListener('keydown', e => {
+  if (e.code === 'Enter') saveScoreBtn.click();
+});
+
+resetScoresBtn.addEventListener('click', resetScores);
+overlayResetScoresBtn.addEventListener('click', resetScores);
+
 const themeToggle = document.getElementById('theme-toggle');
 const toggleIcon = themeToggle.querySelector('.toggle-icon');
 const toggleLabel = themeToggle.querySelector('.toggle-label');
@@ -328,5 +516,7 @@ themeToggle.addEventListener('click', () => {
   applyTheme(isLight);
   localStorage.setItem('tetris-theme', isLight ? 'light' : 'dark');
 });
+
+renderLeaderboardPanel();
 
 init();

@@ -143,6 +143,26 @@ body {
   letter-spacing: 1px;
 }
 
+.skin-select {
+  background: var(--toggle-bg);
+  border: 1px solid var(--toggle-border);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: 'Courier New', Courier, monospace;
+  color: var(--toggle-text);
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: background 0.25s, color 0.25s, border-color 0.25s;
+}
+
+.skin-select:hover,
+.skin-select:focus {
+  border-color: #7aa2f7;
+  color: #7aa2f7;
+  outline: none;
+}
+
 #next-canvas {
   display: block;
   border: 1px solid var(--border);

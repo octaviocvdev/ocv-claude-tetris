@@ -43,6 +43,7 @@ const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let currentSkin = 'retro';
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -158,7 +159,20 @@ function updateHUD() {
   levelEl.textContent = level;
 }
 
-function drawBlock(context, x, y, colorIndex, size, alpha) {
+function lightenColor(hex, amount) {
+  const num = parseInt(hex.slice(1), 16);
+  const r = (num >> 16) & 0xff;
+  const g = (num >> 8) & 0xff;
+  const b = num & 0xff;
+  const nr = Math.round(r + (255 - r) * amount);
+  const ng = Math.round(g + (255 - g) * amount);
+  const nb = Math.round(b + (255 - b) * amount);
+  return `rgb(${nr}, ${ng}, ${nb})`;
+}
+
+// Retro (default): flat fill + translucent top highlight strip. Must stay
+// pixel-identical to the original behavior.
+function drawBlockRetro(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
   const color = COLORS[colorIndex];
   context.globalAlpha = alpha ?? 1;
@@ -168,6 +182,94 @@ function drawBlock(context, x, y, colorIndex, size, alpha) {
   context.fillStyle = 'rgba(255,255,255,0.12)';
   context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
   context.globalAlpha = 1;
+}
+
+// Neon: glowing blocks on a black board background.
+function drawBlockNeon(context, x, y, colorIndex, size, alpha) {
+  if (!colorIndex) return;
+  const color = COLORS[colorIndex];
+  context.globalAlpha = alpha ?? 1;
+  context.shadowColor = color;
+  context.shadowBlur = size * 0.6;
+  context.fillStyle = color;
+  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+  // reset glow immediately so it doesn't bleed into grid lines / other draws
+  context.shadowBlur = 0;
+  context.shadowColor = 'transparent';
+  context.fillStyle = 'rgba(255,255,255,0.18)';
+  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  context.globalAlpha = 1;
+}
+
+// Pastel: softened colors + rounded corners.
+function drawBlockPastel(context, x, y, colorIndex, size, alpha) {
+  if (!colorIndex) return;
+  const color = lightenColor(COLORS[colorIndex], 0.35);
+  const px = x * size + 1;
+  const py = y * size + 1;
+  const w = size - 2;
+  const h = size - 2;
+  const radius = Math.min(6, w / 3, h / 3);
+  context.globalAlpha = alpha ?? 1;
+  context.fillStyle = color;
+  context.beginPath();
+  if (context.roundRect) {
+    context.roundRect(px, py, w, h, radius);
+  } else {
+    context.rect(px, py, w, h);
+  }
+  context.fill();
+  context.fillStyle = 'rgba(255,255,255,0.3)';
+  context.beginPath();
+  const highlightH = Math.min(4, h);
+  const highlightRadius = Math.min(radius, highlightH / 2);
+  if (context.roundRect) {
+    context.roundRect(px, py, w, highlightH, [highlightRadius, highlightRadius, 0, 0]);
+  } else {
+    context.rect(px, py, w, highlightH);
+  }
+  context.fill();
+  context.globalAlpha = 1;
+}
+
+// Pixel art: base fill + small checkerboard dithering + corner accents.
+function drawBlockPixel(context, x, y, colorIndex, size, alpha) {
+  if (!colorIndex) return;
+  const color = COLORS[colorIndex];
+  const px = x * size + 1;
+  const py = y * size + 1;
+  const w = size - 2;
+  const h = size - 2;
+  context.globalAlpha = alpha ?? 1;
+  context.fillStyle = color;
+  context.fillRect(px, py, w, h);
+
+  const cell = Math.max(3, Math.floor(size / 6));
+  context.fillStyle = 'rgba(0,0,0,0.15)';
+  for (let ty = 0; ty * cell < h; ty++) {
+    for (let tx = 0; tx * cell < w; tx++) {
+      if ((tx + ty) % 2 === 0) continue;
+      const cw = Math.min(cell, w - tx * cell);
+      const ch = Math.min(cell, h - ty * cell);
+      context.fillRect(px + tx * cell, py + ty * cell, cw, ch);
+    }
+  }
+  context.fillStyle = 'rgba(255,255,255,0.28)';
+  context.fillRect(px, py, cell, cell);
+  context.fillRect(px + w - cell, py + h - cell, cell, cell);
+  context.globalAlpha = 1;
+}
+
+const SKIN_DRAWERS = {
+  retro: drawBlockRetro,
+  neon: drawBlockNeon,
+  pastel: drawBlockPastel,
+  pixel: drawBlockPixel,
+};
+
+function drawBlock(context, x, y, colorIndex, size, alpha) {
+  const drawer = SKIN_DRAWERS[currentSkin] || drawBlockRetro;
+  drawer(context, x, y, colorIndex, size, alpha);
 }
 
 function drawGrid() {
@@ -189,6 +291,10 @@ function drawGrid() {
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (currentSkin === 'neon') {
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
   drawGrid();
 
   // board
@@ -212,6 +318,10 @@ function draw() {
 function drawNext() {
   const NB = 30;
   nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  if (currentSkin === 'neon') {
+    nextCtx.fillStyle = '#000000';
+    nextCtx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+  }
   const shape = next.shape;
   const offX = Math.floor((4 - shape[0].length) / 2);
   const offY = Math.floor((4 - shape.length) / 2);
@@ -328,5 +438,26 @@ themeToggle.addEventListener('click', () => {
   applyTheme(isLight);
   localStorage.setItem('tetris-theme', isLight ? 'light' : 'dark');
 });
+
+const skinSelect = document.getElementById('skin-select');
+
+function applySkin(skin, redraw) {
+  currentSkin = SKIN_DRAWERS[skin] ? skin : 'retro';
+  if (skinSelect) skinSelect.value = currentSkin;
+  if (redraw) {
+    draw();
+    drawNext();
+  }
+}
+
+const savedSkin = localStorage.getItem('tetris-skin');
+applySkin(savedSkin, false);
+
+if (skinSelect) {
+  skinSelect.addEventListener('change', () => {
+    localStorage.setItem('tetris-skin', skinSelect.value);
+    applySkin(skinSelect.value, true);
+  });
+}
 
 init();
